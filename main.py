@@ -7,6 +7,8 @@ import time
 import json
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from datetime import datetime
+
 
 scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/spreadsheets","https://www.googleapis.com/auth/drive.file","https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_name('creds.json', scope)
@@ -43,7 +45,9 @@ def analyseDescription(description):
 
 def scrapeJobs(data):
     #LAUNCHING SELENIUM 
-    browser = webdriver.Chrome(executable_path='c:/chromedriver.exe')
+    options = Options()
+    options.headless = True
+    browser = webdriver.Chrome(executable_path='c:/chromedriver.exe', chrome_options=options)
 
     jobSpreadsheet = getSheetData("Jobs")
     url = data["url"]
@@ -66,18 +70,17 @@ def scrapeJobs(data):
             "id_stack_primary": "",
             "id_stack_secondary": "",
             "id_isalive": ""
-            
         }
         in_spreadsheet = False
         for s in jobSpreadsheet:
             if j["id_joblink"] == s["id_joblink"]:
-                j["id_jobdesc"] == s["id_jobdesc"]
-                j["id_apply"] == s["id_apply"]
-                j["id_issoftware"] == s["id_issoftware"]
-                j["id_role"] == s["id_role"]
-                j["id_isalive"] == s["id_isalive"]
-                j["id_stack_primary"] == s["id_stack_primary"]
-                j["id_stack_secondary"] == s["id_stack_secondary"]
+                j["id_jobdesc"] = s["id_jobdesc"]
+                j["id_apply"] = s["id_apply"]
+                j["id_issoftware"] = s["id_issoftware"]
+                j["id_role"] = s["id_role"]
+                j["id_isalive"] = s["id_isalive"]
+                j["id_stack_primary"] = s["id_stack_primary"]
+                j["id_stack_secondary"] = s["id_stack_secondary"]
                 j["id_contact"] = s["id_contact"]
                 in_spreadsheet = True
                 break
@@ -86,7 +89,6 @@ def scrapeJobs(data):
             print('New Job Posted')
             browser.get(j["id_joblink"])
             time.sleep(2)
-
             descriptionElement = browser.find_element_by_xpath("//div[@class='cmp-JobDetailDescription-description']")
             description = descriptionElement.text
             apply = ""
@@ -101,13 +103,14 @@ def scrapeJobs(data):
             j["id_contact"] = analysis["email"]
 
         data.append(j)
-
     return data
 
 def scrapeFirms(data):
     description = ""
     if "aboutDescription" in data["aboutStory"].keys():
         description = data["aboutStory"]["aboutDescription"]["lessText"]
+        if "moreText" in data["aboutStory"]["aboutDescription"].keys():
+            description += data["aboutStory"]["aboutDescription"]["moreText"]
     f = {
         "company": data["topLocationsAndJobsStory"]["companyName"],
         "id_jobsopen": data["topLocationsAndJobsStory"]["totalJobCount"],
@@ -129,20 +132,37 @@ def scrapeIndeed(url):
             break
     return data
 
+def scrapeGlassdoor(url):
+    tree = makeRequestAndGetTree(url)
+    scripts = tree.xpath('//script[@type="application/ld+json"]')
+    data = scripts[0].text
+    data = data.split('ratingValue" : "')[1]
+    data = data.split('",\n')[0]
+    data.replace("'", '')    
+    return data
+
 def scrapeFirm(firm):
-    url = firm["id_link"]
-    data = scrapeIndeed(url)
+    id_url = firm["id_link"]
+    gd_url = firm["gd_link"]
+    score = ""
+
+    if gd_url != "":
+        score = scrapeGlassdoor(gd_url)
+
+    data = scrapeIndeed(id_url)
     f = scrapeFirms(data)
 
     time.sleep(1)
 
-    url = firm["id_link"] + "/jobs?q=software"
-    data = scrapeIndeed(url)
+    id_url = firm["id_link"] + "/jobs?q=software"
+    data = scrapeIndeed(id_url)
     data["url"] = firm["id_link"] + "/jobs"
     j = scrapeJobs(data)
 
     f["id_software_jobsopen"] = data["jobList"]["filteredJobCount"]
     f["jobs"] = j
+    f["gd_link"] = gd_url
+    f["gd_score"] = score
     return f
 
 def getSheetData(sheet):
@@ -153,7 +173,12 @@ def getSheetData(sheet):
 def getFirms(firms):
     harvested = []
     for firm in firms:
-        data = scrapeFirm(firm)
+        data = {}
+        try: 
+            data = scrapeFirm(firm)
+        except:
+            errorLog("Scrape Firm Error", firm["id_link"], "")
+            continue
         data["spreadsheet"] = firm
         harvested.append(data)
         time.sleep(5)
@@ -171,13 +196,18 @@ def writeToSheet(sheet, header, data):
     s.update_cells(cells)
 
 
+def errorLog(error, firm, job):
+    now = datetime.now() 
+    time = now.strftime("%H:%M:%S, %m/%d/%Y")
+    sheet = client.open("Indeed").worksheet('Log')
+    sheet.append_row([time, error, firm, job])
 def scrape():
     firmSpreadsheet = getSheetData("Firms")
     firmScrape = getFirms(firmSpreadsheet)
     jobs = []
     firms = []
     for firm in firmScrape:
-        firms.append([firm["company"], firm["spreadsheet"]["id_link"], firm["id_jobsopen"], firm["id_software_jobsopen"], firm["id_about"]])
+        firms.append([firm["company"], firm["spreadsheet"]["id_link"], firm["id_jobsopen"], firm["id_software_jobsopen"], firm["id_about"], firm["gd_link"], firm["gd_score"]])
         for job in firm["jobs"]:
             jobs.append([job['company'], job['id_title'], job['id_joblink'], job["id_jobdesc"], job['id_open'], job['id_location'], job["id_contact"], job["id_apply"], job["id_issoftware"], job["id_role"], job["id_stack_primary"], job["id_stack_secondary"], job["id_isalive"]])
     writeToSheet("Jobs", jobHeader, jobs)
