@@ -4,7 +4,9 @@ from pprint import pprint
 from lxml import html
 import requests
 import time
-import json 
+import json
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 
 scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/spreadsheets","https://www.googleapis.com/auth/drive.file","https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_name('creds.json', scope)
@@ -29,7 +31,20 @@ def makeRequestAndGetTree(URL):
         print(e)
         return None
 
+def analyseDescription(description):
+    spaced = description.split(" ")
+    data = {
+        "email": ""
+    }
+    for s in spaced:
+        if "@" in s and (".com" in s or ".net" in s or ".org" in s):
+            data["email"] = s
+    return data
+
 def scrapeJobs(data):
+    #LAUNCHING SELENIUM 
+    browser = webdriver.Chrome(executable_path='c:/chromedriver.exe')
+
     jobSpreadsheet = getSheetData("Jobs")
     url = data["url"]
     jobs = data["jobList"]['jobs']
@@ -56,7 +71,7 @@ def scrapeJobs(data):
         in_spreadsheet = False
         for s in jobSpreadsheet:
             if j["id_joblink"] == s["id_joblink"]:
-                j["id_jobdesc"] == s["id_contact"]
+                j["id_jobdesc"] == s["id_jobdesc"]
                 j["id_apply"] == s["id_apply"]
                 j["id_issoftware"] == s["id_issoftware"]
                 j["id_role"] == s["id_role"]
@@ -69,7 +84,21 @@ def scrapeJobs(data):
 
         if in_spreadsheet == False:
             print('New Job Posted')
-            #DIVING FOR MORE INFO
+            browser.get(j["id_joblink"])
+            time.sleep(2)
+
+            descriptionElement = browser.find_element_by_xpath("//div[@class='cmp-JobDetailDescription-description']")
+            description = descriptionElement.text
+            apply = ""
+            try:
+                applyElement = browser.find_element_by_xpath("//a[@data-tn-element='NonIAApplyButton']")
+                apply = applyElement.get_attribute("href")
+            except:
+                pass
+            analysis = analyseDescription(description)
+            j["id_jobdesc"] = description
+            j["id_apply"] = apply
+            j["id_contact"] = analysis["email"]
 
         data.append(j)
 
@@ -150,7 +179,7 @@ def scrape():
     for firm in firmScrape:
         firms.append([firm["company"], firm["spreadsheet"]["id_link"], firm["id_jobsopen"], firm["id_software_jobsopen"], firm["id_about"]])
         for job in firm["jobs"]:
-            jobs.append([job['company'], job['id_title'], job['id_joblink'], "", job['id_open'], job['id_location']])
+            jobs.append([job['company'], job['id_title'], job['id_joblink'], job["id_jobdesc"], job['id_open'], job['id_location'], job["id_contact"], job["id_apply"], job["id_issoftware"], job["id_role"], job["id_stack_primary"], job["id_stack_secondary"], job["id_isalive"]])
     writeToSheet("Jobs", jobHeader, jobs)
     writeToSheet("Firms", firmHeader, firms)
 
