@@ -176,8 +176,8 @@ def getFirms(firms):
         data = {}
         try: 
             data = scrapeFirm(firm)
-        except:
-            errorLog("Scrape Firm Error", firm["id_link"], "")
+        except Exception as e:
+            errorLog(repr(e), firm["id_link"], "")
             continue
         data["spreadsheet"] = firm
         harvested.append(data)
