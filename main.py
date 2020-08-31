@@ -15,7 +15,7 @@ settings = {
     "id_stack_primary": "",
     "id_stack_secondary": "",
     "id_role": "",
-    "id_level": ""
+    "id_level": "",
 }
 
 scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/spreadsheets","https://www.googleapis.com/auth/drive.file","https://www.googleapis.com/auth/drive"]
@@ -23,7 +23,7 @@ creds = ServiceAccountCredentials.from_json_keyfile_name('creds.json', scope)
 client = gspread.authorize(creds)
 
 firmHeader = ["company", "id_link", "id_jobsopen", "id_software_jobsopen", "id_about", "gd_link", "gd_score", "li_link", "li_allstaff", "li_jobsopen"]
-jobHeader =  ["company", "id_jobtitle",	"id_joblink", "id_jobdesc", "id_daysopen", "id_location", "id_contact", "id_apply", "id_role", "id_stack_primary", "id_stack_secondary", "id_level"]
+jobHeader =  ["company", "id_jobtitle",	"id_joblink", "id_jobdesc", "id_daysopen", "id_location", "id_contact", "id_apply", "id_role", "id_stack_primary", "id_stack_secondary", "id_level", "id_experience"]
 
 def handleSettings():
     data = getSheetData("Settings")
@@ -50,6 +50,10 @@ def makeRequestAndGetTree(URL):
         return None
 
 def scrapeLinkedIn(browser, URL):
+    data = {
+        "li_allstaff": "",
+        "li_jobsopen": ""
+    }
     browser.get(URL+"/jobs")
     time.sleep(4)
     header = browser.find_element_by_xpath("//h4")
@@ -58,41 +62,87 @@ def scrapeLinkedIn(browser, URL):
     header = header[1]
     header = header.split(" job openings")
     header = header[0]
-    pprint(header)
-    return header
+    employees = browser.find_element_by_xpath("//span[@class='v-align-middle']")
+    employees = employees.text
+    employees = employees.split("See all")[1]
+    employees = employees.split("employees")[0]
+    data["li_allstaff"] = employees
+    data["li_jobsopen"] = header
+    return data
 
 def analyzeText(title, description):
-    spacedTitle = title.lower().split(" ")
-    spacedDescription = description.lower().split(" ")
+    title = title.lower()
+    description = description.lower()
+    spacedTitle = title.split(" ")
+    spacedDescription = description.split(" ")
+    
     data = {
         "email": "",
-        "id_stack_primary": "",
-        "id_stack_secondary": "",
-        "id_role": "",
-        "id_level": ""
+        "id_stack_primary": [],
+        "id_stack_secondary": [],
+        "id_role": [],
+        "id_level": [],
+        "id_experience": ""
     }
-
-    for s in spacedTitle:
-        for i in settings["id_stack_primary"]:
-            if i.lower() == s and i.lower() not in  settings["id_stack_primary"]:
-                data["id_stack_primary"] += i + ", "
-
-    for s in spacedDescription:
+    experience = ""
+    numbers = "0123456789"
+    spacedDescriptionNewLine = description.replace("\n", " ")
+    spacedDescriptionNewLine = spacedDescriptionNewLine.split(" ")
+    for i in range(0, len(spacedDescriptionNewLine)):
+        #email
+        s = spacedDescriptionNewLine[i]
         if "@" in s and (".com" in s or ".net" in s or ".org" in s):
             data["email"] = s
-        for i in settings["id_stack_primary"]:
-            if i.lower() == s and i.lower() not in settings["id_stack_primary"]:
-                data["id_stack_primary"] += i + ", "
-        for i in settings["id_stack_secondary"]:
-            if i.lower() == s and i.lower() not in settings["id_stack_secondary"]:
-                data["id_stack_secondary"] += i + ", "
-        for i in settings["id_role"]:
-            if i.lower() == s and i.lower() not in settings["id_role"]:
-                data["id_role"] += i + ", "
-        for i in settings["id_level"]:
-            if i.lower() == s and i.lower() not in settings["id_level"]:
-                data["id_level"] += i + ", "
-                
+        if experience == "":
+            if s == "years" or s == "year":
+                if i != 0:
+                    j = spacedDescriptionNewLine[i-1]
+                    for n in numbers:
+                        if n in j:
+                            experience = j
+                            print(experience)
+        #experience
+    
+    for setting in settings["id_stack_primary"]:
+        if setting not in data["id_stack_primary"]:
+            if " " in setting:
+                if setting in title or setting in description:
+                    data["id_stack_primary"].append(setting)
+            else:
+                if setting in spacedTitle or setting in spacedDescription:
+                    data["id_stack_primary"].append(setting)
+
+    for setting in settings["id_stack_secondary"]:
+        if setting not in data["id_stack_secondary"]:
+            if " " in setting:
+                if setting in title or setting in description:
+                    data["id_stack_secondary"].append(setting)
+            else:
+                if setting in spacedTitle or setting in spacedDescription:
+                    data["id_stack_secondary"].append(setting)
+
+    for setting in settings["id_role"]:
+        if setting not in data["id_role"]:
+            if " " in setting:
+                if setting in title or setting in description:
+                    data["id_role"].append(setting)
+            else:
+                if setting in spacedTitle or setting in spacedDescription:
+                    data["id_role"].append(setting)
+    
+    for setting in settings["id_level"]:
+        if setting not in data["id_level"]:
+            if " " in setting:
+                if setting in title or setting in description:
+                    data["id_level"].append(setting)
+            else:
+                if setting in spacedTitle or setting in spacedDescription:
+                    data["id_level"].append(setting)
+    data["id_stack_primary"] = arrayToCommaSeperated(data["id_stack_primary"])
+    data["id_stack_secondary"] = arrayToCommaSeperated(data["id_stack_secondary"])
+    data["id_role"] = arrayToCommaSeperated(data["id_role"])
+    data["id_level"] = arrayToCommaSeperated(data["id_level"])  
+    data["id_experience"] = experience
     return data
 
 def scrapeJobs(data):
@@ -106,8 +156,11 @@ def scrapeJobs(data):
     jobs = data["jobList"]['jobs']
     data = []
     for job in jobs:
+        id_open = job["formattedRelativeTime"]
+        id_open = id_open.replace("vor ", "")
+        id_open = id_open.replace(" Tagen", "")
         j = {
-            "id_open": job["formattedRelativeTime"],
+            "id_open": id_open,
             "key": job["jobKey"],
             "id_location": job["location"],
             "id_title": job["title"],
@@ -119,7 +172,8 @@ def scrapeJobs(data):
             "id_role": "",
             "id_stack_primary": "",
             "id_stack_secondary": "",
-            "id_level": ""
+            "id_level": "",
+            "id_experience": ""
         }
         in_spreadsheet = False
         for s in jobSpreadsheet:
@@ -129,8 +183,9 @@ def scrapeJobs(data):
                 j["id_role"] = s["id_role"]
                 j["id_stack_primary"] = s["id_stack_primary"]
                 j["id_stack_secondary"] = s["id_stack_secondary"]
-                J["id_level"] = s["id_level"]
+                j["id_level"] = s["id_level"]
                 j["id_contact"] = s["id_contact"]
+                j["id_experience"] = s["id_experience"]
                 in_spreadsheet = True
                 break
 
@@ -155,6 +210,7 @@ def scrapeJobs(data):
             j["id_role"] = analysis["id_role"]
             j["id_level"] = analysis["id_level"]
             j["id_stack_primary"] = analysis["id_stack_primary"]
+            j["id_experience"] = analysis["id_experience"]
         data.append(j)
     return data
 
@@ -164,12 +220,9 @@ def scrapeFirms(data):
         description = data["aboutStory"]["aboutDescription"]["lessText"]
         if "moreText" in data["aboutStory"]["aboutDescription"].keys():
             description += data["aboutStory"]["aboutDescription"]["moreText"]
-    id_jobsopen = data["topLocationsAndJobsStory"]["totalJobCount"]
-    id_jobsopen.replace("vor ")
-    id_jobsopen.replace(" Tagen")
     f = {
         "company": data["topLocationsAndJobsStory"]["companyName"],
-        "id_jobsopen": id_jobsopen,
+        "id_jobsopen": data["topLocationsAndJobsStory"]["totalJobCount"],
         "id_about": description,
     }
     return f
@@ -208,7 +261,10 @@ def scrapeFirm(browser, firm):
         score = scrapeGlassdoor(gd_url)
     if li_url != "":
         try:
-            li_jobsopen = scrapeLinkedIn(browser, li_url)
+            data = scrapeLinkedIn(browser, li_url) 
+            li_jobsopen = data["li_jobsopen"]
+            li_allstaff = data["li_allstaff"]
+            pass
         except Exception as e: 
             errorLog(repr(e), "", "")
 
@@ -248,7 +304,7 @@ def login(browser):
 def getFirms(firms):
     harvested = []
     options = Options()
-    options.headless = True
+    # options.headless = True
     browser = webdriver.Chrome(executable_path='c:/chromedriver.exe', chrome_options=options)
     try:
         login(browser)
@@ -261,7 +317,6 @@ def getFirms(firms):
             data = scrapeFirm(browser, firm)
         except Exception as e:
             errorLog(repr(e), firm["id_link"], "")
-            continue
         data["spreadsheet"] = firm
         harvested.append(data)
         time.sleep(5)
@@ -285,6 +340,12 @@ def errorLog(error, firm, job):
     sheet = client.open("Indeed").worksheet('Log')
     sheet.append_row([time, error, firm, job])
 
+def arrayToCommaSeperated(arr):
+    new = ""
+    for a in arr:
+        new += a + ", "
+    return new
+
 def scrape():
     handleSettings()
     firmSpreadsheet = getSheetData("Firms")
@@ -292,9 +353,13 @@ def scrape():
     jobs = []
     firms = []
     for firm in firmScrape:
-        firms.append([firm["company"], firm["spreadsheet"]["id_link"], firm["id_jobsopen"], firm["id_software_jobsopen"], firm["id_about"], firm["gd_link"], firm["gd_score"], firm["li_link"], firm["li_allstaff"], firm["li_jobsopen"]])
-        for job in firm["jobs"]:
-            jobs.append([job['company'], job['id_title'], job['id_joblink'], job["id_jobdesc"], job['id_open'], job['id_location'], job["id_contact"], job["id_apply"], job["id_role"], job["id_stack_primary"], job["id_stack_secondary"], job["id_level"]])
+        try:
+            firms.append([firm["company"], firm["spreadsheet"]["id_link"], firm["id_jobsopen"], firm["id_software_jobsopen"], firm["id_about"], firm["gd_link"], firm["gd_score"], firm["li_link"], firm["li_allstaff"], firm["li_jobsopen"]])
+            for job in firm["jobs"]:
+                jobs.append([job['company'], job['id_title'], job['id_joblink'], job["id_jobdesc"], job['id_open'], job['id_location'], job["id_contact"], job["id_apply"], job["id_role"], job["id_stack_primary"], job["id_stack_secondary"], job["id_level"], job["id_experience"]])
+        except Exception as e:
+            errorLog(repr(e), "", "")   
+    
     writeToSheet("Jobs", jobHeader, jobs)
     writeToSheet("Firms", firmHeader, firms)
 
