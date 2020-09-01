@@ -13,8 +13,7 @@ import re
 
 settings = {
     "indeed_query": "",
-    "id_stack_primary": "",
-    "id_stack_secondary": "",
+    "id_stack": "",
     "id_role": "",
     "id_level": "",
 }
@@ -29,10 +28,9 @@ jobHeader =  ["company", "id_jobtitle",	"id_joblink", "id_jobdesc", "id_daysopen
 def handleSettings():
     data = getSheetData("Settings")
     settings["indeed_query"] = data[0]["value"]
-    settings["id_stack_primary"] = data[1]["value"].split(',')
-    settings["id_stack_secondary"] = data[2]["value"].split(',')
-    settings["id_role"] = data[3]["value"].split(',')
-    settings["id_level"] = data[4]["value"].split(',')
+    settings["id_stack"] = data[1]["value"].split(',')
+    settings["id_role"] = data[2]["value"].split(',')
+    settings["id_level"] = data[3]["value"].split(',')
 
 def makeRequestAndGetTree(URL):
     headers = {
@@ -85,6 +83,7 @@ def analyzeText(title, description):
         "id_level": [],
         "id_experience": ""
     }
+
     experience = ""
     numbers = "0123456789"
     spacedDescriptionNewLine = description.replace("\n", " ")
@@ -107,24 +106,27 @@ def analyzeText(title, description):
     spacedDescription = pattern.split(description)
     spacedTitle = pattern.split(title)
 
-    for setting in settings["id_stack_primary"]:
-        
-        if setting not in data["id_stack_primary"]:
-            if " " in setting:
-                if setting in title:
-                    data["id_stack_primary"].append(setting)
-            else:
-                if setting in spacedTitle:
-                    data["id_stack_primary"].append(setting)
-
-    for setting in settings["id_stack_secondary"]:
-        if setting not in data["id_stack_secondary"]:
-            if " " in setting:
-                if setting in title or setting in description:
-                    data["id_stack_secondary"].append(setting)
-            else:
-                if setting in spacedTitle or setting in spacedDescription:
-                    data["id_stack_secondary"].append(setting)
+    stack = {}
+    
+    for setting in settings["id_stack"]:
+        count = 0
+        if setting in spacedTitle:
+            data["id_stack_primary"].append(setting)
+        else: 
+            for word in spacedDescription:
+                    if setting == word:
+                        count += 1
+            if count > 0:
+                stack[setting] = count
+    
+    stack = sorted(stack.items(), key=lambda x: x[1], reverse=True)
+    new = []
+    for s in stack:
+        new.append(s[0])
+    if len(data["id_stack_primary"]) == 0 and len(stack) != 0:
+        data["id_stack_primary"].append(new.pop(0))
+    data["id_stack_secondary"] = new
+    pprint(data)
 
     for setting in settings["id_role"]:
         if setting not in data["id_role"]:
@@ -399,3 +401,44 @@ def scrape():
     writeToSheet("Firms", firmHeader, firms)
 
 scrape()
+def test(title, description):
+    settings = {
+        "indeed_query": "",
+        "id_stack" : ["python", "golang", "react", "java"],
+        "id_role": "",
+        "id_level": "",
+    }
+    data = {
+        "id_stack_primary": [],
+        "id_stack_secondary": []
+    }
+    removelist = "+-"
+
+    pattern = re.compile(r'[^\w'+removelist+']')
+    
+    spacedDescription = pattern.split(description)
+    spacedTitle = pattern.split(title)
+    stack = {}
+    
+    for setting in settings["id_stack"]:
+        count = 0
+        if setting in spacedTitle:
+            data["id_stack_primary"].append(setting)
+        else: 
+            for word in spacedDescription:
+                    if setting == word:
+                        count += 1
+            if count > 0:
+                stack[setting] = count
+    
+    stack = sorted(stack.items(), key=lambda x: x[1], reverse=True)
+    new = []
+    pprint(stack)
+    for s in stack:
+        new.append(s[0])
+    if len(data["id_stack_primary"]) == 0 and len(stack) != 0:
+        data["id_stack_primary"] = new.pop(0)
+    data["id_stack_secondary"] = new
+
+
+# test("full-stack dev java", "java full-stack dev python python python java golang hahahaw react")
