@@ -9,6 +9,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from datetime import datetime
 from selenium.webdriver.common.keys import Keys
+import re
 
 settings = {
     "indeed_query": "",
@@ -41,8 +42,8 @@ def makeRequestAndGetTree(URL):
         'Accept': 'test/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     }
     try:
-        r = requests.get(URL, headers=headers, timeout=5)
-        print(r)
+        r = requests.get(URL, headers=headers, timeout=10)
+        print(r, "-", URL)
         tree = html.fromstring(r.content.decode("utf-8", "replace"))
         return tree
     except Exception as e:
@@ -89,7 +90,6 @@ def analyzeText(title, description):
     spacedDescriptionNewLine = description.replace("\n", " ")
     spacedDescriptionNewLine = spacedDescriptionNewLine.split(" ")
     for i in range(0, len(spacedDescriptionNewLine)):
-        #email
         s = spacedDescriptionNewLine[i]
         if "@" in s and (".com" in s or ".net" in s or ".org" in s):
             data["email"] = s
@@ -100,16 +100,21 @@ def analyzeText(title, description):
                     for n in numbers:
                         if n in j:
                             experience = j
-                            print(experience)
-        #experience
+    removelist = "+-"
+
+    pattern = re.compile(r'[^\w'+removelist+']')
     
+    spacedDescription = pattern.split(description)
+    spacedTitle = pattern.split(title)
+
     for setting in settings["id_stack_primary"]:
+        
         if setting not in data["id_stack_primary"]:
             if " " in setting:
-                if setting in title or setting in description:
+                if setting in title:
                     data["id_stack_primary"].append(setting)
             else:
-                if setting in spacedTitle or setting in spacedDescription:
+                if setting in spacedTitle:
                     data["id_stack_primary"].append(setting)
 
     for setting in settings["id_stack_secondary"]:
@@ -124,20 +129,21 @@ def analyzeText(title, description):
     for setting in settings["id_role"]:
         if setting not in data["id_role"]:
             if " " in setting:
-                if setting in title or setting in description:
+                if setting in title:
                     data["id_role"].append(setting)
             else:
-                if setting in spacedTitle or setting in spacedDescription:
+                if setting in spacedTitle:
                     data["id_role"].append(setting)
     
     for setting in settings["id_level"]:
         if setting not in data["id_level"]:
             if " " in setting:
-                if setting in title or setting in description:
+                if setting in title:
                     data["id_level"].append(setting)
             else:
-                if setting in spacedTitle or setting in spacedDescription:
+                if setting in spacedTitle:
                     data["id_level"].append(setting)
+
     data["id_stack_primary"] = arrayToCommaSeperated(data["id_stack_primary"])
     data["id_stack_secondary"] = arrayToCommaSeperated(data["id_stack_secondary"])
     data["id_role"] = arrayToCommaSeperated(data["id_role"])
@@ -215,16 +221,29 @@ def scrapeJobs(data):
     return data
 
 def scrapeFirms(data):
-    description = ""
-    if "aboutDescription" in data["aboutStory"].keys():
+    f = {
+        "id_about": "",
+        "company": "",
+        "id_jobsopen": 0
+    }
+    try:
         description = data["aboutStory"]["aboutDescription"]["lessText"]
         if "moreText" in data["aboutStory"]["aboutDescription"].keys():
             description += data["aboutStory"]["aboutDescription"]["moreText"]
-    f = {
-        "company": data["topLocationsAndJobsStory"]["companyName"],
-        "id_jobsopen": data["topLocationsAndJobsStory"]["totalJobCount"],
-        "id_about": description,
-    }
+        f["id_about"] = description
+    except:
+        pass
+
+    try:
+        f["company"] = data["topLocationsAndJobsStory"]["companyName"]
+    except:
+        pass
+
+    try: 
+        f["id_jobsopen"] = data["topLocationsAndJobsStory"]["totalJobCount"]
+    except: 
+        pass
+
     return f
 
 def scrapeIndeed(url):
@@ -257,8 +276,13 @@ def scrapeFirm(browser, firm):
     score = ""
     li_jobsopen = ""
     li_allstaff = ""
+    count = 0
+    data = {}
     if gd_url != "":
-        score = scrapeGlassdoor(gd_url)
+        try:
+            score = scrapeGlassdoor(gd_url)
+        except Exception as e:
+            errorLog(repr(e), firm["id_link"], "")
     if li_url != "":
         try:
             data = scrapeLinkedIn(browser, li_url) 
@@ -266,25 +290,33 @@ def scrapeFirm(browser, firm):
             li_allstaff = data["li_allstaff"]
             pass
         except Exception as e: 
-            errorLog(repr(e), "", "")
-
-    data = scrapeIndeed(id_url)
-    f = scrapeFirms(data)
-
+            errorLog(repr(e), firm["id_link"], "")
+    f = {}
+    j = []
+    data = {}
+    try:
+        data = scrapeIndeed(id_url)
+        f = scrapeFirms(data)
+    except Exception as e:
+        errorLog(repr(e), firm["id_link"], "")
     time.sleep(1)
-
     id_url = firm["id_link"] + "/jobs?q=" + settings["indeed_query"]
-    data = scrapeIndeed(id_url)
-    data["url"] = firm["id_link"] + "/jobs"
-    j = scrapeJobs(data)
-
-    f["id_software_jobsopen"] = data["jobList"]["filteredJobCount"]
-    f["jobs"] = j
+    try:
+        data = scrapeIndeed(id_url)
+        data["url"] = firm["id_link"] + "/jobs"
+        count = data["jobList"]["filteredJobCount"]
+        j = scrapeJobs(data)
+    except:
+        errorLog(repr(e), firm["id_link"], "")
+    f["id_software_jobsopen"] = count
     f["gd_link"] = gd_url
     f["gd_score"] = score
     f["li_link"] = li_url
     f["li_jobsopen"] = li_jobsopen
     f["li_allstaff"] = li_allstaff
+    f["jobs"] = j
+    if firm["company"] != "":
+        f["company"] = firm["company"]
     return f
 
 def getSheetData(sheet):
@@ -356,7 +388,10 @@ def scrape():
         try:
             firms.append([firm["company"], firm["spreadsheet"]["id_link"], firm["id_jobsopen"], firm["id_software_jobsopen"], firm["id_about"], firm["gd_link"], firm["gd_score"], firm["li_link"], firm["li_allstaff"], firm["li_jobsopen"]])
             for job in firm["jobs"]:
-                jobs.append([job['company'], job['id_title'], job['id_joblink'], job["id_jobdesc"], job['id_open'], job['id_location'], job["id_contact"], job["id_apply"], job["id_role"], job["id_stack_primary"], job["id_stack_secondary"], job["id_level"], job["id_experience"]])
+                try:
+                    jobs.append([job['company'], job['id_title'], job['id_joblink'], job["id_jobdesc"], job['id_open'], job['id_location'], job["id_contact"], job["id_apply"], job["id_role"], job["id_stack_primary"], job["id_stack_secondary"], job["id_level"], job["id_experience"]])
+                except Exception as e:
+                    errorLog(repr(e), "", )   
         except Exception as e:
             errorLog(repr(e), "", "")   
     
