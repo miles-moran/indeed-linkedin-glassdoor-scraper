@@ -23,14 +23,14 @@ creds = ServiceAccountCredentials.from_json_keyfile_name('creds.json', scope)
 client = gspread.authorize(creds)
 
 firmHeader = ["company", "id_link", "id_jobsopen", "id_software_jobsopen", "id_about", "gd_link", "gd_score", "li_link", "li_allstaff", "li_jobsopen"]
-jobHeader =  ["company", "id_jobtitle",	"id_joblink", "id_jobdesc", "id_daysopen", "id_location", "id_contact", "id_apply", "id_role", "id_stack_primary", "id_stack_secondary", "id_level", "id_experience"]
+jobHeader =  ["company", "id_jobtitle",	"id_joblink", "id_jobdesc", "id_daysopen", "id_location", "id_contact", "id_apply", "id_role", "id_stack_primary", "id_stack_secondary", "id_level"]
 
 def handleSettings():
     data = getSheetData("Settings")
     settings["indeed_query"] = data[0]["value"]
-    settings["id_stack"] = data[1]["value"].split(',')
-    settings["id_role"] = data[2]["value"].split(',')
-    settings["id_level"] = data[3]["value"].split(',')
+    settings["id_stack"] = data[1]["value"].lower().split(',')
+    settings["id_role"] = data[2]["value"].lower().split(',')
+    settings["id_level"] = data[3]["value"].lower().split(',')
 
 def makeRequestAndGetTree(URL):
     headers = {
@@ -99,7 +99,7 @@ def analyzeText(title, description):
                     for n in numbers:
                         if n in j:
                             experience = j
-    removelist = "+-"
+    removelist = "+-#"
 
     pattern = re.compile(r'[^\w'+removelist+']')
     
@@ -126,7 +126,6 @@ def analyzeText(title, description):
     if len(data["id_stack_primary"]) == 0 and len(stack) != 0:
         data["id_stack_primary"].append(new.pop(0))
     data["id_stack_secondary"] = new
-    pprint(data)
 
     for setting in settings["id_role"]:
         if setting not in data["id_role"]:
@@ -164,62 +163,65 @@ def scrapeJobs(data):
     jobs = data["jobList"]['jobs']
     data = []
     for job in jobs:
-        id_open = job["formattedRelativeTime"]
-        id_open = id_open.replace("vor ", "")
-        id_open = id_open.replace(" Tagen", "")
-        j = {
-            "id_open": id_open,
-            "key": job["jobKey"],
-            "id_location": job["location"],
-            "id_title": job["title"],
-            "id_joblink": url + "?jk=" + job["jobKey"],
-            "company": job["companyName"],
-            "id_jobdesc": "",
-            "id_contact": "",
-            "id_apply": "", 
-            "id_role": "",
-            "id_stack_primary": "",
-            "id_stack_secondary": "",
-            "id_level": "",
-            "id_experience": ""
-        }
-        in_spreadsheet = False
-        for s in jobSpreadsheet:
-            if j["id_joblink"] == s["id_joblink"]:
-                j["id_jobdesc"] = s["id_jobdesc"]
-                j["id_apply"] = s["id_apply"]
-                j["id_role"] = s["id_role"]
-                j["id_stack_primary"] = s["id_stack_primary"]
-                j["id_stack_secondary"] = s["id_stack_secondary"]
-                j["id_level"] = s["id_level"]
-                j["id_contact"] = s["id_contact"]
-                j["id_experience"] = s["id_experience"]
-                in_spreadsheet = True
-                break
+        try:
+            id_open = job["formattedRelativeTime"]
+            id_open = id_open.replace("vor ", "")
+            id_open = id_open.replace(" Tagen", "")
+            j = {
+                "id_open": id_open,
+                "key": job["jobKey"],
+                "id_location": job["location"],
+                "id_title": job["title"],
+                "id_joblink": url + "?jk=" + job["jobKey"],
+                "company": job["companyName"],
+                "id_jobdesc": "",
+                "id_contact": "",
+                "id_apply": "", 
+                "id_role": "",
+                "id_stack_primary": "",
+                "id_stack_secondary": "",
+                "id_level": "",
+                "id_experience": ""
+            }
+            in_spreadsheet = False
+            for s in jobSpreadsheet:
+                if j["id_joblink"] == s["id_joblink"]:
+                    j["id_jobdesc"] = s["id_jobdesc"]
+                    j["id_apply"] = s["id_apply"]
+                    j["id_role"] = s["id_role"]
+                    j["id_stack_primary"] = s["id_stack_primary"]
+                    j["id_stack_secondary"] = s["id_stack_secondary"]
+                    j["id_level"] = s["id_level"]
+                    j["id_contact"] = s["id_contact"]
+                    j["id_experience"] = s["id_experience"]
+                    in_spreadsheet = True
+                    break
 
-        if in_spreadsheet == False:
-            print('New Job Posted')
-            browser.get(j["id_joblink"])
-            time.sleep(2)
-            descriptionElement = browser.find_element_by_xpath("//div[@class='cmp-JobDetailDescription-description']")
-            description = descriptionElement.text
-            title = j["id_title"]
-            apply = ""
-            try:
-                applyElement = browser.find_element_by_xpath("//a[@data-tn-element='NonIAApplyButton']")
-                apply = applyElement.get_attribute("href")
-            except:
-                pass
-            analysis = analyzeText(title, description)
-            j["id_jobdesc"] = description
-            j["id_apply"] = apply
-            j["id_contact"] = analysis["email"]
-            j["id_stack_secondary"] = analysis["id_stack_secondary"]
-            j["id_role"] = analysis["id_role"]
-            j["id_level"] = analysis["id_level"]
-            j["id_stack_primary"] = analysis["id_stack_primary"]
-            j["id_experience"] = analysis["id_experience"]
-        data.append(j)
+            if in_spreadsheet == False:
+                print('New Job Posted')
+                browser.get(j["id_joblink"])
+                time.sleep(2)
+                descriptionElement = browser.find_element_by_xpath("//div[@class='cmp-JobDetailDescription-description']")
+                description = descriptionElement.text
+                title = j["id_title"]
+                apply = ""
+                try:
+                    applyElement = browser.find_element_by_xpath("//a[@data-tn-element='NonIAApplyButton']")
+                    apply = applyElement.get_attribute("href")
+                except:
+                    pass
+                analysis = analyzeText(title, description)
+                j["id_jobdesc"] = description
+                j["id_apply"] = apply
+                j["id_contact"] = analysis["email"]
+                j["id_stack_secondary"] = analysis["id_stack_secondary"]
+                j["id_role"] = analysis["id_role"]
+                j["id_level"] = analysis["id_level"]
+                j["id_stack_primary"] = analysis["id_stack_primary"]
+                j["id_experience"] = analysis["id_experience"]
+            data.append(j)
+        except:
+            continue
     return data
 
 def scrapeFirms(data):
@@ -308,7 +310,7 @@ def scrapeFirm(browser, firm):
         data["url"] = firm["id_link"] + "/jobs"
         count = data["jobList"]["filteredJobCount"]
         j = scrapeJobs(data)
-    except:
+    except Exception as e:
         errorLog(repr(e), firm["id_link"], "")
     f["id_software_jobsopen"] = count
     f["gd_link"] = gd_url
@@ -359,7 +361,8 @@ def getFirms(firms):
 def writeToSheet(sheet, header, data):
     if len(data) > 0:
         s = client.open("Indeed").worksheet(sheet)
-        s.clear()
+        book = client.open("Indeed")
+        book.values_clear(sheet + "!A1:L10000")
         data.insert(0, header)
         cells = []
         for row_num, row in enumerate(data):
@@ -391,7 +394,7 @@ def scrape():
             firms.append([firm["company"], firm["spreadsheet"]["id_link"], firm["id_jobsopen"], firm["id_software_jobsopen"], firm["id_about"], firm["gd_link"], firm["gd_score"], firm["li_link"], firm["li_allstaff"], firm["li_jobsopen"]])
             for job in firm["jobs"]:
                 try:
-                    jobs.append([job['company'], job['id_title'], job['id_joblink'], job["id_jobdesc"], job['id_open'], job['id_location'], job["id_contact"], job["id_apply"], job["id_role"], job["id_stack_primary"], job["id_stack_secondary"], job["id_level"], job["id_experience"]])
+                    jobs.append([job['company'], job['id_title'], job['id_joblink'], job["id_jobdesc"], job['id_open'], job['id_location'], job["id_contact"], job["id_apply"], job["id_role"], job["id_stack_primary"], job["id_stack_secondary"], job["id_level"]])
                 except Exception as e:
                     errorLog(repr(e), "", )   
         except Exception as e:
@@ -401,44 +404,7 @@ def scrape():
     writeToSheet("Firms", firmHeader, firms)
 
 scrape()
-def test(title, description):
-    settings = {
-        "indeed_query": "",
-        "id_stack" : ["python", "golang", "react", "java"],
-        "id_role": "",
-        "id_level": "",
-    }
-    data = {
-        "id_stack_primary": [],
-        "id_stack_secondary": []
-    }
-    removelist = "+-"
-
-    pattern = re.compile(r'[^\w'+removelist+']')
-    
-    spacedDescription = pattern.split(description)
-    spacedTitle = pattern.split(title)
-    stack = {}
-    
-    for setting in settings["id_stack"]:
-        count = 0
-        if setting in spacedTitle:
-            data["id_stack_primary"].append(setting)
-        else: 
-            for word in spacedDescription:
-                    if setting == word:
-                        count += 1
-            if count > 0:
-                stack[setting] = count
-    
-    stack = sorted(stack.items(), key=lambda x: x[1], reverse=True)
-    new = []
-    pprint(stack)
-    for s in stack:
-        new.append(s[0])
-    if len(data["id_stack_primary"]) == 0 and len(stack) != 0:
-        data["id_stack_primary"] = new.pop(0)
-    data["id_stack_secondary"] = new
 
 
-# test("full-stack dev java", "java full-stack dev python python python java golang hahahaw react")
+
+
