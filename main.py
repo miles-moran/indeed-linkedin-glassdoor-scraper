@@ -374,6 +374,13 @@ def arrayToCommaSeperated(arr):
         new += a + ", "
     return new
 
+def logExecution():
+    now = datetime.now() 
+    time = now.strftime("%H:%M:%S, %m/%d/%Y")
+    s = client.open("Indeed").worksheet('Firms')
+    s.update_cell(1, 14, time)
+    errorLog("------START------", "----------------", "----------------") 
+
 def scrape():
     handleSettings()
     firmSpreadsheet = getSheetData("Firms")
@@ -395,12 +402,5 @@ def scrape():
     logExecution()
 
 scrape()
-def logExecution():
-    now = datetime.now() 
-    time = now.strftime("%H:%M:%S, %m/%d/%Y")
-    s = client.open("Indeed").worksheet('Firms')
-    s.update_cell(1, 14, time)
-    errorLog("----------------", "----------------", "----------------") 
-
 
 
