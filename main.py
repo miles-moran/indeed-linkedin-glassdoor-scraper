@@ -81,10 +81,8 @@ def analyzeText(title, description):
         "id_stack_secondary": [],
         "id_role": [],
         "id_level": [],
-        "id_experience": ""
     }
 
-    experience = ""
     numbers = "0123456789"
     spacedDescriptionNewLine = description.replace("\n", " ")
     spacedDescriptionNewLine = spacedDescriptionNewLine.split(" ")
@@ -92,13 +90,6 @@ def analyzeText(title, description):
         s = spacedDescriptionNewLine[i]
         if "@" in s and (".com" in s or ".net" in s or ".org" in s):
             data["email"] = s
-        if experience == "":
-            if s == "years" or s == "year":
-                if i != 0:
-                    j = spacedDescriptionNewLine[i-1]
-                    for n in numbers:
-                        if n in j:
-                            experience = j
     removelist = "+-"
 
     pattern = re.compile(r'[^\w'+removelist+']')
@@ -149,7 +140,6 @@ def analyzeText(title, description):
     data["id_stack_secondary"] = arrayToCommaSeperated(data["id_stack_secondary"])
     data["id_role"] = arrayToCommaSeperated(data["id_role"])
     data["id_level"] = arrayToCommaSeperated(data["id_level"])  
-    data["id_experience"] = experience
     return data
 
 def scrapeJobs(data):
@@ -181,7 +171,6 @@ def scrapeJobs(data):
                 "id_stack_primary": "",
                 "id_stack_secondary": "",
                 "id_level": "",
-                "id_experience": ""
             }
             in_spreadsheet = False
             for s in jobSpreadsheet:
@@ -193,7 +182,6 @@ def scrapeJobs(data):
                     j["id_stack_secondary"] = s["id_stack_secondary"]
                     j["id_level"] = s["id_level"]
                     j["id_contact"] = s["id_contact"]
-                    j["id_experience"] = s["id_experience"]
                     in_spreadsheet = True
                     break
 
@@ -218,7 +206,7 @@ def scrapeJobs(data):
                 j["id_role"] = analysis["id_role"]
                 j["id_level"] = analysis["id_level"]
                 j["id_stack_primary"] = analysis["id_stack_primary"]
-                j["id_experience"] = analysis["id_experience"]
+    
             data.append(j)
         except Exception as e: 
             errorLog(repr(e), "", "")
@@ -259,8 +247,9 @@ def scrapeIndeed(url):
         if "window._initialData=JSON.parse('" in str(raw):
             raw = raw.split("window._initialData=JSON.parse('")[1]
             raw = raw.split("');")[0]
-            raw = raw.encode('ascii', 'ignore').decode('unicode_escape')
+            raw = raw.encode('utf-8')
             data = json.loads(raw, strict=False)
+            pprint(data)
             break
     return data
 
