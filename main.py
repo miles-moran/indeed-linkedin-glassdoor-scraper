@@ -99,7 +99,7 @@ def analyzeText(title, description):
                     for n in numbers:
                         if n in j:
                             experience = j
-    removelist = "+-#"
+    removelist = "+-"
 
     pattern = re.compile(r'[^\w'+removelist+']')
     
@@ -208,8 +208,8 @@ def scrapeJobs(data):
                 try:
                     applyElement = browser.find_element_by_xpath("//a[@data-tn-element='NonIAApplyButton']")
                     apply = applyElement.get_attribute("href")
-                except:
-                    pass
+                except Exception as e: 
+                    errorLog(repr(e), "", "")
                 analysis = analyzeText(title, description)
                 j["id_jobdesc"] = description
                 j["id_apply"] = apply
@@ -220,8 +220,8 @@ def scrapeJobs(data):
                 j["id_stack_primary"] = analysis["id_stack_primary"]
                 j["id_experience"] = analysis["id_experience"]
             data.append(j)
-        except:
-            continue
+        except Exception as e: 
+            errorLog(repr(e), "", "")
     return data
 
 def scrapeFirms(data):
