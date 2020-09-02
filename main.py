@@ -359,6 +359,8 @@ def writeToSheet(sheet, header, data):
                 cells.append(gspread.Cell(row_num + 1, col_num + 1, data[row_num][col_num]))
 
         s.update_cells(cells)
+        
+
 
 def errorLog(error, firm, job):
     now = datetime.now() 
@@ -388,12 +390,17 @@ def scrape():
                     errorLog(repr(e), "", )   
         except Exception as e:
             errorLog(repr(e), "", "")   
-    
     writeToSheet("Jobs", jobHeader, jobs)
     writeToSheet("Firms", firmHeader, firms)
+    logExecution()
 
 scrape()
-
+def logExecution():
+    now = datetime.now() 
+    time = now.strftime("%H:%M:%S, %m/%d/%Y")
+    s = client.open("Indeed").worksheet('Firms')
+    s.update_cell(1, 14, time)
+    errorLog("----------------", "----------------", "----------------") 
 
 
 
