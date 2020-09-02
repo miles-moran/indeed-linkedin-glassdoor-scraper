@@ -196,8 +196,12 @@ def scrapeJobs(data):
                 try:
                     applyElement = browser.find_element_by_xpath("//a[@data-tn-element='NonIAApplyButton']")
                     apply = applyElement.get_attribute("href")
-                except Exception as e: 
-                    errorLog(repr(e), "", "")
+                except:
+                    try:
+                        applyElement = browser.find_element_by_xpath("//a[@data-tn-element='IAApplyButton']")
+                        apply = applyElement.get_attribute("href")
+                    except:
+                        pass
                 analysis = analyzeText(title, description)
                 j["id_jobdesc"] = description
                 j["id_apply"] = apply
@@ -248,8 +252,13 @@ def scrapeIndeed(url):
             raw = raw.split("window._initialData=JSON.parse('")[1]
             raw = raw.split("');")[0]
             raw = raw.encode('utf-8')
-            data = json.loads(raw, strict=False)
-            pprint(data)
+            try:
+                data = json.loads(raw, strict=False)
+            except Exception as e:
+                print(e)
+                print('error')
+                pprint(raw)
+                pprint(url)
             break
     return data
 
@@ -291,6 +300,7 @@ def scrapeFirm(browser, firm):
         data = scrapeIndeed(id_url)
         f = scrapeFirms(data)
     except Exception as e:
+
         errorLog(repr(e), firm["id_link"], "")
     time.sleep(1)
     id_url = firm["id_link"] + "/jobs?q=" + settings["indeed_query"]
