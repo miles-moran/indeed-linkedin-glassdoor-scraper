@@ -54,19 +54,25 @@ def scrapeLinkedIn(browser, URL):
         "li_jobsopen": ""
     }
     browser.get(URL+"/jobs")
-    time.sleep(4)
-    header = browser.find_element_by_xpath("//h4")
-    header = header.text
-    header = header.split("has ")
-    header = header[1]
-    header = header.split(" job openings")
-    header = header[0]
-    employees = browser.find_element_by_xpath("//span[@class='v-align-middle']")
-    employees = employees.text
-    employees = employees.split("See all")[1]
-    employees = employees.split("employees")[0]
-    data["li_allstaff"] = employees
-    data["li_jobsopen"] = header
+    time.sleep(2)
+    try: 
+        header = browser.find_element_by_xpath("//h4")
+        header = header.text
+        header = header.split("has ")
+        header = header[1]
+        header = header.split(" job openings")
+        header = header[0]
+        data["li_jobsopen"] = header
+    except:
+        pass
+    try: 
+        employees = browser.find_element_by_xpath("//span[@class='v-align-middle']")
+        employees = employees.text
+        employees = employees.split("See all")[1]
+        employees = employees.split("employees")[0]
+        data["li_allstaff"] = employees
+    except:
+        pass
     return data
 
 def analyzeText(title, description):
@@ -142,12 +148,7 @@ def analyzeText(title, description):
     data["id_level"] = arrayToCommaSeperated(data["id_level"])  
     return data
 
-def scrapeJobs(data):
-    #LAUNCHING SELENIUM 
-    options = Options()
-    options.headless = True
-    browser = webdriver.Chrome(executable_path='c:/chromedriver.exe', chrome_options=options)
-
+def scrapeJobs(browser, data):
     jobSpreadsheet = getSheetData("Jobs")
     url = data["url"]
     jobs = data["jobList"]['jobs']
@@ -188,7 +189,7 @@ def scrapeJobs(data):
             if in_spreadsheet == False:
                 print('New Job Posted')
                 browser.get(j["id_joblink"])
-                time.sleep(2)
+                time.sleep(1.5)
                 descriptionElement = browser.find_element_by_xpath("//div[@class='cmp-JobDetailDescription-description']")
                 description = descriptionElement.text
                 title = j["id_title"]
@@ -210,8 +211,8 @@ def scrapeJobs(data):
                 j["id_role"] = analysis["id_role"]
                 j["id_level"] = analysis["id_level"]
                 j["id_stack_primary"] = analysis["id_stack_primary"]
-    
             data.append(j)
+            time.sleep(2)
         except Exception as e: 
             errorLog(repr(e), "", "")
     return data
@@ -237,7 +238,7 @@ def scrapeFirms(data):
 
     try: 
         f["id_jobsopen"] = data["topLocationsAndJobsStory"]["totalJobCount"]
-    except: 
+    except:
         pass
 
     return f
@@ -246,19 +247,19 @@ def scrapeIndeed(url):
     tree = makeRequestAndGetTree(url)
     scripts = tree.xpath('//script')
     data = {}
+    encoded = ""
     for script in scripts:
         raw = script.text
         if "window._initialData=JSON.parse('" in str(raw):
             raw = raw.split("window._initialData=JSON.parse('")[1]
             raw = raw.split("');")[0]
-            raw = raw.encode('utf-8')
             try:
-                data = json.loads(raw, strict=False)
+                encoded = raw.encode('utf-8')
+                data = json.loads(encoded, strict=False)
             except Exception as e:
-                print(e)
-                print('error')
-                pprint(raw)
-                pprint(url)
+                errorLog(repr(e), url, "IGNORING SPECIAL CHARACTERS")
+                encoded = raw.encode('ascii', 'ignore').decode('unicode_escape')
+                data = json.loads(encoded, strict=False)
             break
     return data
 
@@ -271,6 +272,91 @@ def scrapeGlassdoor(url):
     data.replace("'", '')    
     return data
 
+def scrapeIndeedStray(browser, url):
+    f = {
+        "company": "",
+        "id_jobsopen": "",
+        "id_software_jobsopen": "",
+        "id_about": "",
+        "jobs": []
+    }
+    links = []
+    dates = []
+    locations = []
+    browser.get(url)
+    time.sleep(2)
+    try:
+        header = browser.find_element_by_xpath("//h1[@id='jobsInLocation']").text
+        f["company"] = header
+    except Exception as e: 
+        errorLog(repr(e), url, "Stray Job Error")
+    try:
+        count = browser.find_element_by_xpath("//div[@id='searchCountPages']").text
+        count = count.split("von ")[1]
+        count = count.split( "Jobs")[0]
+        f["id_jobsopen"] = count
+        f["id_software_jobsopen"] = count
+    except Exception as e: 
+        errorLog(repr(e), url, "Stray Job Error")
+    linksText = []
+    datesText = []
+    locationsText = []
+    try:
+        links = browser.find_elements_by_xpath("//a[@class='jobtitle turnstileLink ']")
+        dates = browser.find_elements_by_xpath("//span[@class='date ']")
+        locations = browser.find_elements_by_xpath("//span[@class='location accessible-contrast-color-location']")
+        for l in links:
+            linksText.append(l.get_attribute("href"))
+        for d in dates:
+            datesText.append(d.text)
+        for ll in locations:
+            locationsText.append(ll.text)
+    except Exception as e: 
+        errorLog(repr(e), url, "Stray Job Error")
+    for l in range(0, len(linksText)):
+        j = {
+                "company": "",
+                "id_title": "",
+                "id_joblink": "",
+                "id_jobdesc": "",
+                "id_open": "",
+                "id_location": "",
+                "id_contact": "",
+                "id_apply": "",
+                "id_role": "",
+                "id_stack_primary": "",
+                "id_stack_secondary": "",
+                "id_level": ""
+            }
+        try:
+            j["company"] = f["company"]
+            j["id_open"] = datesText[l]
+            href = linksText[l]
+            j["id_joblink"] = href
+            browser.get(href)
+            time.sleep(2)
+            title = browser.find_element_by_xpath("//h1[@class='icl-u-xs-mb--xs icl-u-xs-mt--none jobsearch-JobInfoHeader-title']").text
+            description = browser.find_element_by_xpath("//div[@id='jobDescriptionText']").text
+            j["id_title"] = title
+            location = locationsText[l]
+            j["id_location"] = location
+            j["id_jobdesc"] = description
+            try:
+                applies = browser.find_element_by_xpath("//a[contains(text(),'Weiter zur Bewerbung')]")
+                j["id_apply"] = applies.get_attribute("href")
+            except Exception as e:
+                errorLog(repr(e), url, "Stray Job Error: Apply Button")
+            analysis = analyzeText(title, description)
+            j["id_contact"] = analysis["email"]
+            j["id_stack_secondary"] = analysis["id_stack_secondary"]
+            j["id_role"] = analysis["id_role"]
+            j["id_level"] = analysis["id_level"]
+            j["id_stack_primary"] = analysis["id_stack_primary"]
+            f["jobs"].append(j)
+        except Exception as e:
+            errorLog(repr(e), url, href)
+    return f
+
 def scrapeFirm(browser, firm):
     id_url = firm["id_link"]
     gd_url = firm["gd_link"]
@@ -280,6 +366,8 @@ def scrapeFirm(browser, firm):
     li_allstaff = ""
     count = 0
     data = {}
+    f = {}
+    j = []
     if gd_url != "":
         try:
             score = scrapeGlassdoor(gd_url)
@@ -290,27 +378,36 @@ def scrapeFirm(browser, firm):
             data = scrapeLinkedIn(browser, li_url) 
             li_jobsopen = data["li_jobsopen"]
             li_allstaff = data["li_allstaff"]
+            f["id_jobsopen"] = ""
             pass
         except Exception as e: 
             errorLog(repr(e), firm["id_link"], "")
-    f = {}
-    j = []
-    data = {}
-    try:
-        data = scrapeIndeed(id_url)
-        f = scrapeFirms(data)
-    except Exception as e:
 
-        errorLog(repr(e), firm["id_link"], "")
-    time.sleep(1)
-    id_url = firm["id_link"] + "/jobs?q=" + settings["indeed_query"]
-    try:
-        data = scrapeIndeed(id_url)
-        data["url"] = firm["id_link"] + "/jobs"
-        count = data["jobList"]["filteredJobCount"]
-        j = scrapeJobs(data)
-    except Exception as e:
-        errorLog(repr(e), firm["id_link"], "")
+    data = {}
+    if id_url != "":
+        if "https://de.indeed.com/Jobs?" in id_url:
+            f = scrapeIndeedStray(browser, id_url)
+            j = f["jobs"]
+            count = f["id_jobsopen"]
+        else:
+            try:
+                data = scrapeIndeed(id_url)
+                f = scrapeFirms(data)
+            except Exception as e:
+                errorLog(repr(e), firm["id_link"], "")
+            time.sleep(1)
+            id_url = firm["id_link"] + "/jobs?q=" + settings["indeed_query"]
+            try:
+                data = scrapeIndeed(id_url)
+                data["url"] = firm["id_link"] + "/jobs"
+                count = data["jobList"]["filteredJobCount"]
+                j = scrapeJobs(browser, data)
+            except Exception as e:
+                errorLog(repr(e), firm["id_link"], "")
+    else:
+        f["company"] = firm["company"]
+        f["id_link"] = ""
+        f["id_about"] = ""
     f["id_software_jobsopen"] = count
     f["gd_link"] = gd_url
     f["gd_score"] = score
@@ -367,16 +464,14 @@ def writeToSheet(sheet, header, data):
         for row_num, row in enumerate(data):
             for col_num, cell in enumerate(row):
                 cells.append(gspread.Cell(row_num + 1, col_num + 1, data[row_num][col_num]))
-
         s.update_cells(cells)
         
-
-
 def errorLog(error, firm, job):
-    now = datetime.now() 
-    time = now.strftime("%H:%M:%S, %m/%d/%Y")
-    sheet = client.open("Indeed").worksheet('Log')
-    sheet.append_row([time, error, firm, job])
+    # now = datetime.now() 
+    # time = now.strftime("%H:%M:%S, %m/%d/%Y")
+    # sheet = client.open("Indeed").worksheet('Log')
+    # sheet.append_row([time, error, firm, job])
+    print(error)
 
 def arrayToCommaSeperated(arr):
     new = ""
@@ -389,14 +484,17 @@ def logExecution():
     time = now.strftime("%H:%M:%S, %m/%d/%Y")
     s = client.open("Indeed").worksheet('Firms')
     s.update_cell(1, 14, time)
-    errorLog("------START------", "----------------", "----------------") 
+    errorLog("------END------", "----------------", "----------------") 
 
 def scrape():
+    errorLog("------START------", "----------------", "----------------") 
     handleSettings()
     firmSpreadsheet = getSheetData("Firms")
     firmScrape = getFirms(firmSpreadsheet)
     jobs = []
     firms = []
+    creds = ServiceAccountCredentials.from_json_keyfile_name('creds.json', scope) #refresh creds for lengthy run time
+    client = gspread.authorize(creds) #refresh creds for lengthy run time
     for firm in firmScrape:
         try:
             firms.append([firm["company"], firm["spreadsheet"]["id_link"], firm["id_jobsopen"], firm["id_software_jobsopen"], firm["id_about"], firm["gd_link"], firm["gd_score"], firm["li_link"], firm["li_allstaff"], firm["li_jobsopen"]])
@@ -410,7 +508,5 @@ def scrape():
     writeToSheet("Jobs", jobHeader, jobs)
     writeToSheet("Firms", firmHeader, firms)
     logExecution()
-
+ 
 scrape()
-
-
